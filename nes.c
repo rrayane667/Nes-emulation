@@ -332,7 +332,7 @@ void JSR(){
     uint16_t addr = (hi<<8) | lo;
     uint16_t returnAddress = pc + 1;
     pushStack((returnAddress >> 8) & 0xFF); // Push high byte
-    pushStack(returnAddress & 0xFF);  // push low byte
+    pushStack(returnAddress & 0xFF);       // push low byte
     pc = addr;
     cycles = 6;
 }
@@ -407,8 +407,8 @@ void LDY(){
     pc++;
     Y = readmem(pc);
     pc++;
-    processorStatus.bits.N = 1;
-    processorStatus.bits.Z = 1;
+    processorStatus.bits.N = (Y & 0x80) != 0;
+    processorStatus.bits.Z = (Y==0);
 }
 
 void BCC(){
@@ -517,12 +517,10 @@ void ORA_Xind(){
     
     uint16_t value = Xind();
     A |= readMem(value);
-    if (A>>15 == 1){
-        processorStatus.bits.N =1;
-    }
-    if(!A){
-        processorStatus.bits.Z = 1;
-    }
+    processorStatus.bits.N =((A& 0x80) != 0);
+
+
+    processorStatus.bits.Z = (A==0);
     cycles = 6;
     pc++;
 }
@@ -531,12 +529,10 @@ void ORA_Yind(){
     
     uint16_t value = Yind();
     A |= readMem(value);
-    if (A>>15 == 1){
-        processorStatus.bits.N =1;
-    }
-    if(!A){
-        processorStatus.bits.Z = 1;
-    }
+    processorStatus.bits.N =((A& 0x80) != 0);
+
+
+    processorStatus.bits.Z = (A==0);
     pc++;
 }
 
@@ -544,12 +540,10 @@ void AND_Xind(){
 
     uint16_t value = Xind();
     A &= readMem(value);
-    if (A>>15 == 1){
-        processorStatus.bits.N =1;
-    }
-    if(!A){
-        processorStatus.bits.Z = 1;
-    }
+    processorStatus.bits.N =((A& 0x80) != 0);
+
+
+    processorStatus.bits.Z = (A==0);
     cycles = 6;
     pc++;
 }
@@ -558,12 +552,10 @@ void AND_Yind(){
     
     uint16_t value = Yind();
     A &= readMem(value);
-    if (A>>15 == 1){
-        processorStatus.bits.N =1;
-    }
-    if(!A){
-        processorStatus.bits.Z = 1;
-    }
+    processorStatus.bits.N =((A& 0x80) != 0);
+
+
+    processorStatus.bits.Z = (A==0);
     pc++;
 }
 
@@ -571,12 +563,10 @@ void EOR_Xind(){
 
     uint16_t value = Xind();
     A ^= readMem(value);
-    if (A>>15 == 1){
-        processorStatus.bits.N =1;
-    }
-    if(!A){
-        processorStatus.bits.Z = 1;
-    }
+    processorStatus.bits.N =((A& 0x80) != 0);
+
+
+    processorStatus.bits.Z = (A==0);
     cycles = 6;
     pc++;
 }
@@ -585,7 +575,7 @@ void EOR_Yind(){
     uint16_t value = Yind();
     A ^= readMem(value);
 
-    processorStatus.bits.N =(A>>15 == 1);
+    processorStatus.bits.N =((A& 0x80) != 0);
 
 
     processorStatus.bits.Z = (A==0);
@@ -643,11 +633,530 @@ void LDA_Yind(){
 }
 
 void CMP_Xind(){
-    uint8_t cp = A - readMem(Xind());
-    processorStatus.bits.N = (cp<0);
-    processorStatus.bits.Z = (cp==1);
-    processorStatus.bits.C
+    uint8_t value = readMem(Xind());  
+    uint16_t result = A - value;      
+
+    // Set processor flags
+    processorStatus.bits.N = (result & 0x80) != 0;  
+    processorStatus.bits.Z = (result == 0);         
+    processorStatus.bits.C = (A >= value);          
 }
+
+void SBC_Xind(){
+    uint8_t value = readMem(Xind());
+    uint16_t result = A - value - (1 - processorStatus.bits.C);
+
+    processorStatus.bits.C = (result <= 0xFF);           
+    processorStatus.bits.Z = ((result & 0xFF) == 0);     
+    processorStatus.bits.N = (result & 0x80) != 0;       
+    processorStatus.bits.V = ((A ^ result) & (A ^ value) & 0x80) != 0; 
+
+    A = result & 0xFF;
+    pc++;
+    cycles = 6;
+
+}
+void SBC_Yind(){
+    uint8_t value = readMem(Yind());
+    uint16_t result = A - value - (1 - processorStatus.bits.C);
+
+    processorStatus.bits.C = (result <= 0xFF);           
+    processorStatus.bits.Z = ((result & 0xFF) == 0);     
+    processorStatus.bits.N = (result & 0x80) != 0;       
+    processorStatus.bits.V = ((A ^ result) & (A ^ value) & 0x80) != 0; 
+
+    A = result & 0xFF;
+    pc++;
+
+
+}
+
+void LDX(){
+    pc++;
+    X=readMem(pc);
+    pc++;
+    cycles = 2;
+}
+
+void BIT_ZPG(){
+    pc ++;
+    cycles = 3;
+    uint8_t op = readMem(pc);
+
+    processorStatus.bits.N = (op >> 7) & 0x01;
+    processorStatus.bits.V = (op >> 6) & 0x01;
+    processorStatus.bits.Z = ((A&op) == 0); 
+}
+
+void STY_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    writeMem(addr, Y);
+    pc++;
+    cycles = 3;
+}
+
+void STY_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    writeMem(addr, Y);
+    pc++;
+    cycles = 4;
+}
+
+void LDY_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    Y = readMem(addr);
+    
+    // Set flags
+    processorStatus.bits.N = (Y & 0x80) != 0;
+    processorStatus.bits.Z = (Y == 0);
+    
+    pc++;
+    cycles = 3;
+}
+void LDY_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    Y = readMem(addr);
+    
+    // Set flags
+    processorStatus.bits.N = (Y & 0x80) != 0;
+    processorStatus.bits.Z = (Y == 0);
+    
+    pc++;
+    cycles = 4;
+}
+void CPY_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    uint16_t result = Y - value;
+
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.Z = (result == 0);
+    processorStatus.bits.C = (Y >= value);
+    
+    pc++;
+    cycles = 3;
+}
+
+void CPX_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    uint16_t result = X - value;
+
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.Z = (result == 0);
+    processorStatus.bits.C = (X >= value);
+    
+    pc++;
+    cycles = 3;
+}
+void ORA_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    A |= value;
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 3;
+}
+
+void ORA_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    A |= value;
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 4;
+}
+void AND_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    A &= value;
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 3;
+}
+void AND_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    A &= value;
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 4;
+}
+void EOR_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    A ^= value;
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 3;
+}
+void EOR_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    A ^= value;
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 4;
+}
+void ADC_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    uint16_t result = A + value + processorStatus.bits.C;
+
+    processorStatus.bits.C = (result > 0xFF);
+    processorStatus.bits.Z = ((result & 0xFF) == 0);
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.V = (~(A ^ value) & (A ^ result) & 0x80) != 0;
+
+    A = result & 0xFF;
+    
+    pc++;
+    cycles = 3;
+}
+void ADC_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    uint16_t result = A + value + processorStatus.bits.C;
+
+    processorStatus.bits.C = (result > 0xFF);
+    processorStatus.bits.Z = ((result & 0xFF) == 0);
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.V = (~(A ^ value) & (A ^ result) & 0x80) != 0;
+
+    A = result & 0xFF;
+    
+    pc++;
+    cycles = 4;
+}
+void STA_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    writeMem(addr, A);
+    pc++;
+    cycles = 3;
+}
+void STA_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    writeMem(addr, A);
+    pc++;
+    cycles = 4;
+}
+void LDA_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    A = readMem(addr);
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 3;
+}
+void LDA_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    A = readMem(addr);
+
+    processorStatus.bits.N = (A & 0x80) != 0;
+    processorStatus.bits.Z = (A == 0);
+    
+    pc++;
+    cycles = 4;
+}
+void CMP_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    uint16_t result = A - value;
+
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.Z = (result == 0);
+    processorStatus.bits.C = (A >= value);
+    
+    pc++;
+    cycles = 3;
+}
+void CMP_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    uint16_t result = A - value;
+
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.Z = (result == 0);
+    processorStatus.bits.C = (A >= value);
+    
+    pc++;
+    cycles = 4;
+}
+void SBC_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    uint16_t result = A - value - (1 - processorStatus.bits.C);
+
+    processorStatus.bits.C = (result <= 0xFF);
+    processorStatus.bits.Z = ((result & 0xFF) == 0);
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.V = ((A ^ result) & (A ^ value) & 0x80) != 0;
+
+    A = result & 0xFF;
+    pc++;
+    cycles = 3;
+}
+void SBC_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    uint16_t result = A - value - (1 - processorStatus.bits.C);
+
+    processorStatus.bits.C = (result <= 0xFF);
+    processorStatus.bits.Z = ((result & 0xFF) == 0);
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.V = ((A ^ result) & (A ^ value) & 0x80) != 0;
+
+    A = result & 0xFF;
+    pc++;
+    cycles = 4;
+}
+void ASL_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    processorStatus.bits.C = (value & 0x80) != 0;
+    value <<= 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 5;
+}
+void ASL_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    processorStatus.bits.C = (value & 0x80) != 0;
+    value <<= 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 6;
+}
+void ROL_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    uint8_t carry_in = processorStatus.bits.C;
+    processorStatus.bits.C = (value & 0x80) != 0;
+    value = (value << 1) | carry_in;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 5;
+}
+void ROL_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    processorStatus.bits.C = (value & 0x80) != 0;
+    value = (value << 1) | processorStatus.bits.C;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 6;
+}
+void LSR_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    processorStatus.bits.C = (value & 0x01) != 0;
+    value >>= 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = 0; // Since the result will always be positive
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 5;
+}
+void LSR_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+    processorStatus.bits.C = (value & 0x01) != 0;
+    value >>= 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = 0; // Since the result will always be positive
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 6;
+}
+void ROR_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr);
+    uint8_t carry_in = processorStatus.bits.C;
+    processorStatus.bits.C = (value & 0x01) != 0;
+    value = (value >> 1) | (carry_in << 7);
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 5;
+}
+void ROR_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr);
+
+    // Perform the rotate operation and update the carry flag
+    uint8_t new_carry = value & 0x01;
+    value = (value >> 1) | (processorStatus.bits.C << 7);
+    processorStatus.bits.C = new_carry;
+
+    // Update the processor status flags
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80);
+
+    // Write the result back to memory
+    writeMem(addr, value);
+    pc++;
+    cycles = 6;
+}
+void STX_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    writeMem(addr, X);
+    pc++;
+    cycles = 3;
+}
+void STX_Yzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + Y;
+    writeMem(addr, X);
+    pc++;
+    cycles = 4;
+}
+void LDX_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    X = readMem(addr);
+
+    processorStatus.bits.Z = (X == 0);
+    processorStatus.bits.N = (X & 0x80) != 0;
+
+    pc++;
+    cycles = 3;
+}
+void LDX_Yzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + Y;
+    X = readMem(addr);
+
+    processorStatus.bits.Z = (X == 0);
+    processorStatus.bits.N = (X & 0x80) != 0;
+
+    pc++;
+    cycles = 4;
+}
+void DEC_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr) - 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 5;
+}
+void DEC_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr) - 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 6;
+}
+void INC_ZPG(){
+    pc++;
+    uint8_t addr = readMem(pc);
+    uint8_t value = readMem(addr) + 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 5;
+}
+void INC_Xzpg(){
+    pc++;
+    uint8_t addr = readMem(pc) + X;
+    uint8_t value = readMem(addr) + 1;
+
+    processorStatus.bits.Z = (value == 0);
+    processorStatus.bits.N = (value & 0x80) != 0;
+
+    writeMem(addr, value);
+    pc++;
+    cycles = 6;
+}
+
+
 void clock(){
     if (cycles == 0){
         decodeOpcode(readMem(pc));
