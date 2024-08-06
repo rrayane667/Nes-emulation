@@ -233,6 +233,21 @@ void decodeOpcode(uint8_t opCode){
         default: printf("Unknown opcode: \n", opCode); break;
     }
 }
+uint16_t Xind(){
+    pc++;
+    uint8_t lo = readMem((readMem(pc)+X) & 0xFF );
+    uint8_t hi = readMem((readMem(pc)+X+1) & 0xFF);
+    return (hi<<8) | lo;
+}
+
+uint16_t Yind(){
+    cycles = 6;
+    pc++;
+    if ((readMem(readMem(pc)) & 0xFF00) != ((readMem(readMem(pc))+Y)&0xFF00)) cycles++;
+    uint8_t lo = readMem(readMem(readMem(pc))+Y);
+    uint8_t hi = readMem(readMem(readMem(pc))+Y+1);
+    return (hi<<8) | lo;
+}
 void BRK(){
     if (!processorStatus.bits.I){
         writeMem(0x0100 + sp, (pc >> 8) & 0x00FF);
@@ -249,9 +264,10 @@ void BRK(){
 
         pc = (hi << 8) | lo;
 
-        cycles = 7;
+        
         
     }
+    cycles = 7;
 }
 
 void NMI(){
@@ -291,13 +307,21 @@ void BPL(){
     if (!processorStatus.bits.N ){
         pc ++;
         int8_t bb = readMem(pc);
+
+        uint16_t old_pc = pc+1;
         pc += bb;
 
+        if ((old_pc & 0xFF00) != (pc&0xFF00)){
+            cycles = 4;
+        }else{
+            cycles = 3;
+        }
     }else{
         pc++;
+        cycles = 2;
     }
     
-    cycles = 7;
+    
 }
 
 void JSR(){
@@ -305,7 +329,7 @@ void JSR(){
     uint8_t lo = readMem(pc);
     pc++;
     uint8_t hi = readMem(pc);
-    uint16_t addr = (hi<<8) + lo;
+    uint16_t addr = (hi<<8) | lo;
     uint16_t returnAddress = pc + 1;
     pushStack((returnAddress >> 8) & 0xFF); // Push high byte
     pushStack(returnAddress & 0xFF);  // push low byte
@@ -327,6 +351,7 @@ void BMI(){
         }
     }else{
         pc++;
+        cycles = 2;
     }
 }
 
@@ -345,6 +370,7 @@ void BVC(){
         }
     }else{
         pc++;
+        cycles = 2;
     }
 }
 
@@ -373,9 +399,255 @@ void BVS(){
         }
     }else{
         pc++;
+        cycles = 2;
     }
 }
 
+void LDY(){
+    pc++;
+    Y = readmem(pc);
+    pc++;
+    processorStatus.bits.N = 1;
+    processorStatus.bits.Z = 1;
+}
+
+void BCC(){
+    if (!processorStatus.bits.C){
+        pc ++;
+        int8_t bb = readMem(pc);
+
+        uint16_t old_pc = pc+1;
+        pc += bb;
+
+        if ((old_pc & 0xFF00) != (pc&0xFF00)){
+            cycles = 4;
+        }else{
+            cycles = 3;
+        }
+    }else{
+        pc++;
+        cycles = 2;
+    }
+}
+
+void BCS(){
+    if (processorStatus.bits.C){
+        pc ++;
+        int8_t bb = readMem(pc);
+
+        uint16_t old_pc = pc+1;
+        pc += bb;
+
+        if ((old_pc & 0xFF00) != (pc&0xFF00)){
+            cycles = 4;
+        }else{
+            cycles = 3;
+        }
+    }else{
+        pc++;
+        cycles = 2;
+    }
+}
+
+void CPY(){
+    pc++;
+    uint8_t value = readMem(pc);
+    if (value>Y){
+        processorStatus.bits.N ==1;
+    }else if (value == Y){
+        processorStatus.bits.Z = 1;
+    }else {
+        processorStatus.bits.C=1;
+    }
+    pc++;
+}
+
+void BNE(){
+    if (!processorStatus.bits.Z){
+        pc ++;
+        int8_t bb = readMem(pc);
+
+        uint16_t old_pc = pc+1;
+        pc += bb;
+
+        if ((old_pc & 0xFF00) != (pc&0xFF00)){
+            cycles = 4;
+        }else{
+            cycles = 3;
+        }
+    }else{
+        pc++;
+        cycles = 2;
+    }
+}
+
+void CPX(){
+    pc++;
+    uint8_t value = readMem(pc);
+    if (value>X){
+        processorStatus.bits.N ==1;
+    }else if (value == X){
+        processorStatus.bits.Z = 1;
+    }else {
+        processorStatus.bits.C=1;
+    }
+    pc++;
+}
+
+void BEQ(){
+    if (processorStatus.bits.Z){
+        pc ++;
+        int8_t bb = readMem(pc);
+
+        uint16_t old_pc = pc+1;
+        pc += bb;
+
+        if ((old_pc & 0xFF00) != (pc&0xFF00)){
+            cycles = 4;
+        }else{
+            cycles = 3;
+        }
+    }else{
+        pc++;
+        cycles = 2;
+    }
+}
+
+void ORA_Xind(){
+    
+    uint16_t value = Xind();
+    A |= readMem(value);
+    if (A>>15 == 1){
+        processorStatus.bits.N =1;
+    }
+    if(!A){
+        processorStatus.bits.Z = 1;
+    }
+    cycles = 6;
+    pc++;
+}
+
+void ORA_Yind(){
+    
+    uint16_t value = Yind();
+    A |= readMem(value);
+    if (A>>15 == 1){
+        processorStatus.bits.N =1;
+    }
+    if(!A){
+        processorStatus.bits.Z = 1;
+    }
+    pc++;
+}
+
+void AND_Xind(){
+
+    uint16_t value = Xind();
+    A &= readMem(value);
+    if (A>>15 == 1){
+        processorStatus.bits.N =1;
+    }
+    if(!A){
+        processorStatus.bits.Z = 1;
+    }
+    cycles = 6;
+    pc++;
+}
+
+void AND_Yind(){
+    
+    uint16_t value = Yind();
+    A &= readMem(value);
+    if (A>>15 == 1){
+        processorStatus.bits.N =1;
+    }
+    if(!A){
+        processorStatus.bits.Z = 1;
+    }
+    pc++;
+}
+
+void EOR_Xind(){
+
+    uint16_t value = Xind();
+    A ^= readMem(value);
+    if (A>>15 == 1){
+        processorStatus.bits.N =1;
+    }
+    if(!A){
+        processorStatus.bits.Z = 1;
+    }
+    cycles = 6;
+    pc++;
+}
+
+void EOR_Yind(){
+    uint16_t value = Yind();
+    A ^= readMem(value);
+
+    processorStatus.bits.N =(A>>15 == 1);
+
+
+    processorStatus.bits.Z = (A==0);
+
+    pc++;
+}
+
+void ADC_Xind(){
+    uint8_t value = readMem(Xind());
+    uint16_t sum = A + value + processorStatus.bits.C;
+    processorStatus.bits.C = (sum > 0xFF);
+    uint8_t result = sum & 0xFF;
+    processorStatus.bits.Z = (result == 0);
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.V = (~(A ^ value) & (A ^ result) & 0x80) != 0;
+    A = result;
+    pc++;
+    cycles = 6;
+
+}
+
+void ADC_Yind(){
+    uint8_t value = readMem(Yind());
+    uint16_t sum = A + value + processorStatus.bits.C;
+    processorStatus.bits.C = (sum > 0xFF);
+    uint8_t result = sum & 0xFF;
+    processorStatus.bits.Z = (result == 0);
+    processorStatus.bits.N = (result & 0x80) != 0;
+    processorStatus.bits.V = (~(A ^ value) & (A ^ result) & 0x80) != 0;
+    A = result;
+    pc++;
+}
+
+void STA_Xind(){
+
+    writeMem(Xind(), A);
+    pc++;
+    cycles = 6;
+}
+
+void STA_Yind(){
+    writeMem(Yind(), A);
+    pc++;
+}
+
+void LDA_Xind(){
+    A = readMem(Xind());
+    pc++;
+    cycles = 6;
+}
+
+void LDA_Yind(){
+    A = readMem(Yind());
+    pc++;
+}
+
+void CMP_Xind(){
+    uint8_t cp = A - readMem(Xind());
+    processorStatus.bits.N = (cp<0);
+    processorStatus.bits.Z = (cp==1);
+    processorStatus.bits.C
+}
 void clock(){
     if (cycles == 0){
         decodeOpcode(readMem(pc));
